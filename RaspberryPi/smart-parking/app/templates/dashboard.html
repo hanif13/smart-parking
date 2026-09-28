@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Smart Parking</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}"
+    >
+</head>
+
+<body>
+
+    <!-- ================================================= -->
+    <!-- TOP BAR -->
+    <!-- ================================================= -->
+
+    <header class="topbar">
+
+        <div class="brand">
+
+            <div class="brand-icon">
+                🅿️
+            </div>
+
+            <div>
+                <h1>Smart Parking</h1>
+                <p>ระบบบริหารจัดการลานจอดรถอัจฉริยะ</p>
+            </div>
+
+        </div>
+
+        <div class="connection-status">
+
+            <span
+                id="system-dot"
+                class="status-dot online"
+            ></span>
+
+            <span id="system-text">
+                SYSTEM ONLINE
+            </span>
+
+        </div>
+
+    </header>
+
+
+    <!-- ================================================= -->
+    <!-- MAIN -->
+    <!-- ================================================= -->
+
+    <main class="container">
+
+
+        <!-- ================================================= -->
+        <!-- SUMMARY -->
+        <!-- ================================================= -->
+
+        <section class="summary-grid">
+
+            <div class="summary-card available-card">
+
+                <div class="summary-icon">
+                    🅿️
+                </div>
+
+                <div class="summary-content">
+
+                    <span class="summary-label">
+                        ช่องจอดว่าง
+                    </span>
+
+                    <strong id="available-count">
+                        -
+                    </strong>
+
+                    <small>
+                        ช่อง
+                    </small>
+
+                </div>
+
+            </div>
+
+
+            <div class="summary-card occupied-card">
+
+                <div class="summary-icon">
+                    🚗
+                </div>
+
+                <div class="summary-content">
+
+                    <span class="summary-label">
+                        รถที่จอด
+                    </span>
+
+                    <strong id="occupied-count">
+                        -
+                    </strong>
+
+                    <small>
+                        คัน
+                    </small>
+
+                </div>
+
+            </div>
+
+
+            <div class="summary-card gate-card">
+
+                <div
+                    id="gate-icon"
+                    class="summary-icon"
+                >
+                    🚧
+                </div>
+
+                <div class="summary-content">
+
+                    <span class="summary-label">
+                        สถานะไม้กั้น
+                    </span>
+
+                    <strong id="gate-status">
+                        -
+                    </strong>
+
+                    <small id="gate-detail">
+                        -
+                    </small>
+
+                </div>
+
+            </div>
+
+
+            <div class="summary-card ir-card">
+
+                <div class="summary-icon">
+                    📡
+                </div>
+
+                <div class="summary-content">
+
+                    <span class="summary-label">
+                        เซนเซอร์ IR
+                    </span>
+
+                    <strong id="ir-status">
+                        -
+                    </strong>
+
+                    <small id="ir-detail">
+                        -
+                    </small>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ================================================= -->
+        <!-- PARKING AREA -->
+        <!-- ================================================= -->
+
+        <section class="section-card parking-section">
+
+            <div class="section-header">
+
+                <div>
+
+                    <h2>
+                        🅿️ Parking Area
+                    </h2>
+
+                    <p>
+                        สถานะช่องจอดรถแบบ Real-time
+                    </p>
+
+                </div>
+
+                <div class="parking-summary">
+
+                    <span>
+                        ว่าง
+                        <b id="header-available">-</b>
+                    </span>
+
+                    <span>
+                        จอดแล้ว
+                        <b id="header-occupied">-</b>
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <div class="parking-grid">
+
+                <!-- P01 -->
+
+                <div
+                    id="slot-1"
+                    class="parking-slot free"
+                >
+
+                    <div class="slot-top">
+
+                        <span class="slot-number">
+                            P01
+                        </span>
+
+                        <span
+                            id="slot-1-status"
+                            class="slot-status"
+                        >
+                            FREE
+                        </span>
+
+                    </div>
+
+                    <div
+                        id="slot-1-car"
+                        class="car-icon hidden"
+                    >
+                        🚗
+                    </div>
+
+                    <div
+                        id="slot-1-empty"
+                        class="empty-icon"
+                    >
+                        🅿️
+                    </div>
+
+                    <div class="slot-bottom">
+                        ช่องจอด 01
+                    </div>
+
+                </div>
+
+
+                <!-- P02 -->
+
+                <div
+                    id="slot-2"
+                    class="parking-slot free"
+                >
+
+                    <div class="slot-top">
+
+                        <span class="slot-number">
+                            P02
+                        </span>
+
+                        <span
+                            id="slot-2-status"
+                            class="slot-status"
+                        >
+                            FREE
+                        </span>
+
+                    </div>
+
+                    <div
+                        id="slot-2-car"
+                        class="car-icon hidden"
+                    >
+                        🚗
+                    </div>
+
+                    <div
+                        id="slot-2-empty"
+                        class="empty-icon"
+                    >
+                        🅿️
+                    </div>
+
+                    <div class="slot-bottom">
+                        ช่องจอด 02
+                    </div>
+
+                </div>
+
+
+                <!-- P03 -->
+
+                <div
+                    id="slot-3"
+                    class="parking-slot free"
+                >
+
+                    <div class="slot-top">
+
+                        <span class="slot-number">
+                            P03
+                        </span>
+
+                        <span
+                            id="slot-3-status"
+                            class="slot-status"
+                        >
+                            FREE
+                        </span>
+
+                    </div>
+
+                    <div
+                        id="slot-3-car"
+                        class="car-icon hidden"
+                    >
+                        🚗
+                    </div>
+
+                    <div
+                        id="slot-3-empty"
+                        class="empty-icon"
+                    >
+                        🅿️
+                    </div>
+
+                    <div class="slot-bottom">
+                        ช่องจอด 03
+                    </div>
+
+                </div>
+
+
+                <!-- P04 -->
+
+                <div
+                    id="slot-4"
+                    class="parking-slot free"
+                >
+
+                    <div class="slot-top">
+
+                        <span class="slot-number">
+                            P04
+                        </span>
+
+                        <span
+                            id="slot-4-status"
+                            class="slot-status"
+                        >
+                            FREE
+                        </span>
+
+                    </div>
+
+                    <div
+                        id="slot-4-car"
+                        class="car-icon hidden"
+                    >
+                        🚗
+                    </div>
+
+                    <div
+                        id="slot-4-empty"
+                        class="empty-icon"
+                    >
+                        🅿️
+                    </div>
+
+                    <div class="slot-bottom">
+                        ช่องจอด 04
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ================================================= -->
+        <!-- PARKING ANALYTICS -->
+        <!-- ================================================= -->
+
+        <section class="section-card analytics-section">
+
+            <div class="section-header">
+
+                <div>
+
+                    <h2>
+                        📊 Parking Analytics
+                    </h2>
+
+                    <p>
+                        สถิติการจอดรถของวันนี้
+                    </p>
+
+                </div>
+
+                <span class="analytics-live">
+                    ● LIVE
+                </span>
+
+            </div>
+
+
+            <!-- ANALYTICS CARDS -->
+
+            <div class="analytics-grid">
+
+
+                <div class="analytics-card">
+
+                    <div class="analytics-icon">
+                        🚗
+                    </div>
+
+                    <div>
+
+                        <span>
+                            รถเข้าจอดวันนี้
+                        </span>
+
+                        <strong id="analytics-entered">
+                            -
+                        </strong>
+
+                        <small>
+                            ครั้ง
+                        </small>
+
+                    </div>
+
+                </div>
+
+
+                <div class="analytics-card">
+
+                    <div class="analytics-icon">
+                        🚙
+                    </div>
+
+                    <div>
+
+                        <span>
+                            รถออกวันนี้
+                        </span>
+
+                        <strong id="analytics-exited">
+                            -
+                        </strong>
+
+                        <small>
+                            ครั้ง
+                        </small>
+
+                    </div>
+
+                </div>
+
+
+                <div class="analytics-card">
+
+                    <div class="analytics-icon">
+                        🅿️
+                    </div>
+
+                    <div>
+
+                        <span>
+                            กำลังจอด
+                        </span>
+
+                        <strong id="analytics-current">
+                            -
+                        </strong>
+
+                        <small>
+                            คัน
+                        </small>
+
+                    </div>
+
+                </div>
+
+
+                <div class="analytics-card">
+
+                    <div class="analytics-icon">
+                        ⏱️
+                    </div>
+
+                    <div>
+
+                        <span>
+                            เวลาเฉลี่ย
+                        </span>
+
+                        <strong id="analytics-average">
+                            -
+                        </strong>
+
+                        <small>
+                            นาที
+                        </small>
+
+                    </div>
+
+                </div>
+
+
+                <div class="analytics-card">
+
+                    <div class="analytics-icon">
+                        🕐
+                    </div>
+
+                    <div>
+
+                        <span>
+                            จอดนานที่สุด
+                        </span>
+
+                        <strong id="analytics-max">
+                            -
+                        </strong>
+
+                        <small>
+                            นาที
+                        </small>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <!-- DAILY SUMMARY -->
+
+            <div class="analytics-subsection">
+
+                <div class="analytics-title">
+                    📅 สถิติย้อนหลัง 7 วัน
+                </div>
+
+                <div class="analytics-table-wrapper">
+
+                    <table class="analytics-table">
+
+                        <thead>
+
+                            <tr>
+
+                                <th>
+                                    วันที่
+                                </th>
+
+                                <th>
+                                    เข้าจอด
+                                </th>
+
+                                <th>
+                                    ออก
+                                </th>
+
+                                <th>
+                                    เฉลี่ย
+                                </th>
+
+                                <th>
+                                    สูงสุด
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="daily-summary-body">
+
+                            <tr>
+
+                                <td colspan="5">
+                                    กำลังโหลดข้อมูล...
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+
+            <!-- RECENT PARKING -->
+
+            <div class="analytics-subsection">
+
+                <div class="analytics-title">
+                    🅿️ ประวัติการจอดล่าสุด
+                </div>
+
+                <div class="analytics-table-wrapper">
+
+                    <table class="analytics-table">
+
+                        <thead>
+
+                            <tr>
+
+                                <th>
+                                    ช่อง
+                                </th>
+
+                                <th>
+                                    เวลาเข้า
+                                </th>
+
+                                <th>
+                                    เวลาออก
+                                </th>
+
+                                <th>
+                                    ระยะเวลา
+                                </th>
+
+                                <th>
+                                    สถานะ
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+                        <tbody id="parking-sessions-body">
+
+                            <tr>
+
+                                <td colspan="5">
+                                    กำลังโหลดข้อมูล...
+                                </td>
+
+                            </tr>
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ================================================= -->
+        <!-- GATE + SYSTEM -->
+        <!-- ================================================= -->
+
+        <div class="two-column">
+
+
+            <!-- GATE -->
+
+            <section class="section-card gate-panel">
+
+                <div class="section-header">
+
+                    <div>
+
+                        <h2>
+                            🚧 ทางเข้า - ออก
+                        </h2>
+
+                        <p>
+                            Gate Control
+                        </p>
+
+                    </div>
+
+                    <span
+                        id="gate-badge"
+                        class="badge closed"
+                    >
+                        CLOSED
+                    </span>
+
+                </div>
+
+
+                <div class="gate-visual">
+
+                    <div class="road">
+
+                        <div class="road-line"></div>
+
+                        <div
+                            id="gate-car"
+                            class="gate-car"
+                        >
+                            🚗
+                        </div>
+
+                    </div>
+
+                    <div
+                        id="gate-arm"
+                        class="gate-arm closed"
+                    ></div>
+
+                    <div class="gate-post"></div>
+
+                </div>
+
+
+                <div class="gate-info">
+
+                    <div class="info-item">
+
+                        <span>
+                            📡 IR Sensor
+                        </span>
+
+                        <strong id="gate-ir">
+                            CLEAR
+                        </strong>
+
+                    </div>
+
+
+                    <div class="info-item">
+
+                        <span>
+                            🔓 เปิดไม้กั้น
+                        </span>
+
+                        <strong id="gate-open-count">
+                            0
+                        </strong>
+
+                    </div>
+
+
+                    <div class="info-item">
+
+                        <span>
+                            🔒 ปิดไม้กั้น
+                        </span>
+
+                        <strong id="gate-close-count">
+                            0
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+            <!-- SYSTEM -->
+
+            <section class="section-card system-panel">
+
+                <div class="section-header">
+
+                    <div>
+
+                        <h2>
+                            🖥️ System Status
+                        </h2>
+
+                        <p>
+                            สถานะอุปกรณ์และระบบ
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <div class="system-list">
+
+
+                    <!-- Arduino 1 -->
+
+                    <div class="system-item">
+
+                        <div class="system-item-left">
+
+                            <div class="system-device-icon">
+                                🔌
+                            </div>
+
+                            <div>
+
+                                <strong>
+                                    Arduino 1
+                                </strong>
+
+                                <span>
+                                    Parking Sensor
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                        <div
+                            id="arduino1-status"
+                            class="device-status offline"
+                        >
+                            OFFLINE
+                        </div>
+
+                    </div>
+
+
+                    <!-- Arduino 2 -->
+
+                    <div class="system-item">
+
+                        <div class="system-item-left">
+
+                            <div class="system-device-icon">
+                                🔌
+                            </div>
+
+                            <div>
+
+                                <strong>
+                                    Arduino 2
+                                </strong>
+
+                                <span>
+                                    Gate Controller
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                        <div
+                            id="arduino2-status"
+                            class="device-status offline"
+                        >
+                            OFFLINE
+                        </div>
+
+                    </div>
+
+
+                    <!-- Database -->
+
+                    <div class="system-item">
+
+                        <div class="system-item-left">
+
+                            <div class="system-device-icon">
+                                💾
+                            </div>
+
+                            <div>
+
+                                <strong>
+                                    Database
+                                </strong>
+
+                                <span>
+                                    SQLite
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                        <div
+                            id="database-status"
+                            class="device-status offline"
+                        >
+                            OFFLINE
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div class="database-info">
+
+                    <div>
+
+                        <span>
+                            Parking Records
+                        </span>
+
+                        <strong id="parking-records">
+                            0
+                        </strong>
+
+                    </div>
+
+                    <div>
+
+                        <span>
+                            Gate Records
+                        </span>
+
+                        <strong id="gate-records">
+                            0
+                        </strong>
+
+                    </div>
+
+                    <div>
+
+                        <span>
+                            Events
+                        </span>
+
+                        <strong id="event-records">
+                            0
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+        </div>
+
+
+        <!-- ================================================= -->
+        <!-- RECENT ACTIVITY -->
+        <!-- ================================================= -->
+
+        <section class="section-card activity-section">
+
+            <div class="section-header">
+
+                <div>
+
+                    <h2>
+                        🕒 Recent Activity
+                    </h2>
+
+                    <p>
+                        กิจกรรมล่าสุดของระบบ
+                    </p>
+
+                </div>
+
+                <span class="live-badge">
+                    ● LIVE
+                </span>
+
+            </div>
+
+
+            <div
+                id="activity-list"
+                class="activity-list"
+            >
+
+                <div class="empty-activity">
+                    กำลังรอข้อมูล...
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- ================================================= -->
+        <!-- FOOTER -->
+        <!-- ================================================= -->
+
+        <footer>
+
+            <span>
+                Smart Parking System
+            </span>
+
+            <span>
+                Raspberry Pi + Arduino
+            </span>
+
+            <span id="last-update">
+                Last update: -
+            </span>
+
+        </footer>
+
+    </main>
+
+
+    <script
+        src="{{ url_for('static', filename='dashboard.js') }}"
+    ></script>
+
+</body>
+
+</html>
