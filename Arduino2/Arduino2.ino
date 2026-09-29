@@ -7,833 +7,288 @@
 #include <avr/interrupt.h>
 
 // =====================================================
-// ARDUINO 2
-// SMART PARKING GATE CONTROLLER
-//
-// หน้าที่
+// ARDUINO 2: ระบบควบคุมไม้กั้นที่จอดรถ (SMART PARKING GATE CONTROLLER)
+// หน้าที่:
 // 1. รับจำนวนช่องว่างจาก Arduino 1
-// 2. ตรวจจับรถด้วย IR
+// 2. ตรวจจับรถด้วยเซนเซอร์ IR
 // 3. ควบคุม Servo เปิด/ปิดไม้กั้น
-// 4. แสดงจำนวนช่องว่างบน LCD
-// 5. ส่งสถานะไป Raspberry Pi
-//
-// เนื้อหาวิชา
-// - Interrupt
-// - Timer / Counter
-// - Watchdog Timer
-// - EEPROM
-// - UART / USART
-// - SoftwareSerial
+// 4. แสดงจำนวนช่องว่างบนหน้าจอ LCD
+// 5. ส่งสถานะไปยัง Raspberry Pi
 // =====================================================
 
+// กำหนดขาพิน (Pin Configuration)
+const byte IR_PIN = 2;       // IR Sensor (ใช้ INT0)
+const byte SERVO_PIN = A0;   // Servo Motor
+const byte SOFT_RX = 10;     // SoftwareSerial RX (รับจาก Arduino 1 TX)
+const byte SOFT_TX = 11;     // SoftwareSerial TX (ส่งไป Arduino 1 RX)
 
-// =====================================================
-// PIN CONFIGURATION
-// =====================================================
-
-// ---------- IR Sensor ----------
-// ย้ายจาก D5 -> D2
-// เพราะ D5 ใช้ร่วมกับ SoftwareSerial / Pin Change Interrupt
-const byte IR_PIN = 2;
-
-
-// ---------- Servo ----------
-const byte SERVO_PIN = A0;
-
-
-// ---------- SoftwareSerial ----------
-// Arduino 1 TX (A4) -> Arduino 2 RX (D10)
-// Arduino 2 TX (D11) -> Arduino 1 RX (A5)
-const byte SOFT_RX = 10;
-const byte SOFT_TX = 11;
-
-
-// =====================================================
-// OBJECTS
-// =====================================================
-
+// อุปกรณ์และไลบรารี
 LiquidCrystal_I2C lcd(0x27, 16, 2);
-
 Servo gateServo;
-
 SoftwareSerial arduinoSerial(SOFT_RX, SOFT_TX);
 
+// ตัวแปรระบบ
+int availableSlots = 0;                 // จำนวนช่องจอดว่าง
+volatile bool irInterruptFlag = false;    // Flag แจ้งเตือนเมื่อเกิด Interrupt จาก IR
+bool carAtIR = false;                   // สถานะว่ามีรถตรง IR หรือไม่
+bool gateOpen = false;                  // สถานะไม้กั้น (true = เปิด)
+unsigned long clearStart = 0;           // เวลาที่เริ่มตรวจว่ารถพ้นเซนเซอร์ IR แล้ว
+const unsigned long CLOSE_DELAY = 1500; // เวลาหน่วงก่อนปิดไม้กั้นหลังรถพ้น (1.5 วินาที)
 
-// =====================================================
-// SYSTEM VARIABLES
-// =====================================================
-
-// จำนวนช่องว่าง
-int availableSlots = 0;
-
-
-// สถานะรถที่ IR
-volatile bool irInterruptFlag = false;
-
-bool carAtIR = false;
-
-
-// สถานะไม้กั้น
-bool gateOpen = false;
-
-
-// เวลาที่เริ่มตรวจว่ารถพ้น IR แล้ว
-unsigned long clearStart = 0;
-
-
-// เวลาปิดไม้กั้นหลังรถพ้น
-const unsigned long CLOSE_DELAY = 1500;
-
-
-// =====================================================
-// TIMER VARIABLES
-// =====================================================
-
-// Timer2 ทำหน้าที่สร้าง time base 1 ms
+// ตัวแปรเวลาและสถานะ
 volatile unsigned long systemMillis = 0;
-
-
-// =====================================================
-// DEBUG / STATUS TIMER
-// =====================================================
-
 unsigned long lastPiStatus = 0;
 unsigned long lastDebug = 0;
 
-
-// =====================================================
-// EEPROM DATA
-// =====================================================
-
+// โครงสร้างข้อมูล EEPROM
 struct EEPROMData {
-
   unsigned long magic;
-
   unsigned long bootCount;
-
   unsigned long irDetectionCount;
-
   unsigned long gateOpenCount;
-
   unsigned long gateCloseCount;
 };
 
-
-// Magic number
 const unsigned long EEPROM_MAGIC = 0x12345678;
-
-
-// EEPROM address
 const int EEPROM_ADDRESS = 0;
-
-
-// ข้อมูล EEPROM
 EEPROMData eepromData;
 
-
-// =====================================================
-// FUNCTION DECLARATIONS
-// =====================================================
-
+// ประกาศฟังก์ชัน (Function Prototypes)
 void irISR();
-
 void setupTimer2();
-
 void loadEEPROM();
-
 void saveEEPROM();
-
 void receiveArduino1();
-
 void processIRInterrupt();
-
 void updateGate();
-
 void openGate();
-
 void closeGate();
-
 void updateLCD();
-
 void sendPiStatus();
-
 void printDebug();
 
-
-// =====================================================
-// TIMER2 INTERRUPT
-// =====================================================
-//
-// Timer2 ใช้สร้าง interrupt ทุกประมาณ 1 ms
-//
-// Arduino UNO 16 MHz
-// Prescaler = 64
-// OCR2A = 249
-//
-// 16,000,000 / 64 = 250,000
-// 250,000 / 250 = 1,000 Hz
-// = 1 ms
-// =====================================================
-
+// Timer2 Interrupt (ทำงานทุกๆ 1 ms)
 ISR(TIMER2_COMPA_vect) {
-
   systemMillis++;
 }
 
-
-// =====================================================
-// IR INTERRUPT
-// =====================================================
-//
-// ใช้ External Interrupt INT0
-// Arduino UNO
-// D2 = INT0
-//
-// เมื่อสัญญาณ IR เปลี่ยน
-// จะเข้าฟังก์ชันนี้
-// =====================================================
-
+// External Interrupt จากเซนเซอร์ IR (พิน D2)
 void irISR() {
-
   irInterruptFlag = true;
 }
 
-
-// =====================================================
-// SETUP TIMER2
-// =====================================================
-
+// ตั้งค่า Hardware Timer2 (สร้างฐานเวลา 1 ms)
 void setupTimer2() {
-
   cli();
-
-  // Normal mode
   TCCR2A = 0;
-
-  // CTC mode
-  TCCR2A |= (1 << WGM21);
-
-  // Prescaler 64
+  TCCR2A |= (1 << WGM21);             // โหมด CTC
   TCCR2B = 0;
-  TCCR2B |= (1 << CS22);
-
-  // 1 ms
-  OCR2A = 249;
-
-  // Enable Compare Match A interrupt
-  TIMSK2 |= (1 << OCIE2A);
-
+  TCCR2B |= (1 << CS22);              // Prescaler 64
+  OCR2A = 249;                        // 1 ms ที่ความถี่ 16MHz
+  TIMSK2 |= (1 << OCIE2A);            // เปิดใช้งาน Interrupt Compare Match A
   sei();
 }
 
-
-// =====================================================
-// EEPROM LOAD
-// =====================================================
-
+// โหลดข้อมูลจาก EEPROM
 void loadEEPROM() {
-
   EEPROM.get(EEPROM_ADDRESS, eepromData);
-
-
-  // ถ้า EEPROM ยังไม่มีข้อมูล
   if (eepromData.magic != EEPROM_MAGIC) {
-
     eepromData.magic = EEPROM_MAGIC;
-
     eepromData.bootCount = 0;
-
     eepromData.irDetectionCount = 0;
-
     eepromData.gateOpenCount = 0;
-
     eepromData.gateCloseCount = 0;
-
     EEPROM.put(EEPROM_ADDRESS, eepromData);
   }
-
-
-  // เพิ่มจำนวนครั้งที่เปิดเครื่อง
   eepromData.bootCount++;
-
   EEPROM.put(EEPROM_ADDRESS, eepromData);
 }
 
-
-// =====================================================
-// EEPROM SAVE
-// =====================================================
-
+// บันทึกข้อมูลลง EEPROM
 void saveEEPROM() {
-
   EEPROM.put(EEPROM_ADDRESS, eepromData);
 }
-
-
-// =====================================================
-// SETUP
-// =====================================================
 
 void setup() {
-
-  // ---------------------------------------------------
-  // Watchdog Timer
-  // ---------------------------------------------------
-
-  // ถ้าโปรแกรมค้างเกิน 2 วินาที
-  // Arduino จะ reset ตัวเอง
+  // เปิดใช้งาน Watchdog Timer (รีเซ็ตตัวเองหากค้างเกิน 2 วินาที)
   wdt_enable(WDTO_2S);
 
-
-  // ---------------------------------------------------
-  // Serial USB
-  // ---------------------------------------------------
-
   Serial.begin(9600);
-
-
-  // ---------------------------------------------------
-  // SoftwareSerial
-  // ---------------------------------------------------
-
   arduinoSerial.begin(9600);
 
-
-  // ---------------------------------------------------
-  // IR
-  // ---------------------------------------------------
-
   pinMode(IR_PIN, INPUT);
-
-
-  // External Interrupt
-  //
-  // D2 = INT0
-  //
-  // CHANGE = ตรวจทั้ง HIGH -> LOW
-  // และ LOW -> HIGH
-
-  attachInterrupt(
-    digitalPinToInterrupt(IR_PIN),
-    irISR,
-    CHANGE
-  );
-
-
-  // ---------------------------------------------------
-  // Servo
-  // ---------------------------------------------------
+  // ตั้งค่า Interrupt ตรวจจับทั้งขอบขึ้นและขอบลง (CHANGE)
+  attachInterrupt(digitalPinToInterrupt(IR_PIN), irISR, CHANGE);
 
   gateServo.attach(SERVO_PIN);
-
-  // เริ่มต้นปิดไม้กั้น
-  gateServo.write(0);
-
+  gateServo.write(0); // เริ่มต้นปิดไม้กั้น
   gateOpen = false;
 
-
-  // ---------------------------------------------------
-  // LCD
-  // ---------------------------------------------------
-
   lcd.init();
-
   lcd.backlight();
-
-
-  // แสดงครั้งแรก
-  //
-  // ไม่มี lcd.clear()
-  // เพื่อป้องกันการกระพริบ
-
-  lcd.setCursor(0, 0);
-  lcd.print("SMART PARKING");
-
-  lcd.setCursor(0, 1);
-  lcd.print("Available: 0/4");
-
-
-  // ---------------------------------------------------
-  // EEPROM
-  // ---------------------------------------------------
+  lcd.setCursor(0, 0); lcd.print("SMART PARKING");
+  lcd.setCursor(0, 1); lcd.print("Available: 0/4");
 
   loadEEPROM();
-
-
-  // ---------------------------------------------------
-  // Timer2
-  // ---------------------------------------------------
-
   setupTimer2();
-
-
-  // ---------------------------------------------------
-  // Debug
-  // ---------------------------------------------------
 
   Serial.println();
   Serial.println("==============================");
   Serial.println("ARDUINO 2 START");
   Serial.println("==============================");
-
   Serial.println("IR Pin      : D2");
   Serial.println("Servo Pin   : A0");
   Serial.println("Soft RX     : D10");
   Serial.println("Soft TX     : D11");
   Serial.println("LCD         : I2C 0x27");
-
   Serial.println("==============================");
 
-
-  // อัปเดต LCD
   updateLCD();
 }
 
-
-// =====================================================
-// LOOP
-// =====================================================
-
 void loop() {
+  wdt_reset(); // เคลียร์ Watchdog Timer
 
-  // ---------------------------------------------------
-  // RESET WATCHDOG
-  // ---------------------------------------------------
+  receiveArduino1();      // รับข้อมูลจำนวนช่องว่างจาก Arduino 1
+  processIRInterrupt();  // ประมวลผล Interrupt จาก IR
+  updateGate();          // ควบคุมการเปิด/ปิดไม้กั้น
 
-  wdt_reset();
-
-
-  // ---------------------------------------------------
-  // รับข้อมูลจาก Arduino 1
-  // ---------------------------------------------------
-
-  receiveArduino1();
-
-
-  // ---------------------------------------------------
-  // ประมวลผล Interrupt จาก IR
-  // ---------------------------------------------------
-
-  processIRInterrupt();
-
-
-  // ---------------------------------------------------
-  // ควบคุมไม้กั้น
-  // ---------------------------------------------------
-
-  updateGate();
-
-
-  // ---------------------------------------------------
-  // ส่งสถานะไป Raspberry Pi
-  // ---------------------------------------------------
-
+  // ส่งสถานะไป Raspberry Pi ทุกๆ 500 ms
   if (millis() - lastPiStatus >= 500) {
-
     lastPiStatus = millis();
-
     sendPiStatus();
   }
 
-
-  // ---------------------------------------------------
-  // Debug
-  // ---------------------------------------------------
-
+  // แสดงผล Debug ทุกๆ 1 วินาที
   if (millis() - lastDebug >= 1000) {
-
     lastDebug = millis();
-
     printDebug();
   }
 }
 
-
-// =====================================================
-// RECEIVE DATA FROM ARDUINO 1
-// =====================================================
-//
-// Arduino 1 ส่ง:
-//
-// A=3
-//
-// หมายถึงมีช่องว่าง 3 ช่อง
-// =====================================================
-
+// รับข้อมูลจาก Arduino 1 (รูปแบบ เช่น "A=3")
 void receiveArduino1() {
-
-  if (!arduinoSerial.available()) {
-    return;
-  }
-
+  if (!arduinoSerial.available()) return;
 
   String data = arduinoSerial.readStringUntil('\n');
-
   data.trim();
 
-
-  // ตรวจสอบ A=
   if (data.startsWith("A=")) {
-
     int newAvailable = data.substring(2).toInt();
+    if (newAvailable < 0) newAvailable = 0;
+    if (newAvailable > 4) newAvailable = 4;
 
-
-    // ป้องกันค่าผิดปกติ
-    if (newAvailable < 0) {
-      newAvailable = 0;
-    }
-
-    if (newAvailable > 4) {
-      newAvailable = 4;
-    }
-
-
-    // -------------------------------------------------
-    // สำคัญ
-    // -------------------------------------------------
-    //
-    // ถ้าค่าเปลี่ยนเท่านั้น
-    // จึงอัปเดต LCD
-    //
-    // ทำให้ LCD ไม่ต้องเขียนซ้ำทุก 500 ms
-
+    // อัปเดต LCD เฉพาะเมื่อจำนวนช่องจอดเปลี่ยนเท่านั้น
     if (newAvailable != availableSlots) {
-
       availableSlots = newAvailable;
-
       updateLCD();
     }
   }
 }
 
-
-// =====================================================
-// PROCESS IR INTERRUPT
-// =====================================================
-
+// ประมวลผลเหตุการณ์จากเซนเซอร์ IR
 void processIRInterrupt() {
-
-  if (!irInterruptFlag) {
-    return;
-  }
-
-
-  // ปิด flag
+  if (!irInterruptFlag) return;
   irInterruptFlag = false;
 
+  bool currentCarState = (digitalRead(IR_PIN) == LOW); // LOW = มีวัตถุ/รถบัง
 
-  // อ่านค่าปัจจุบัน
-  bool currentCarState = (digitalRead(IR_PIN) == LOW);
-
-
-  // ---------------------------------------------------
-  // ตรวจจับรถ
-  // ---------------------------------------------------
-
+  // กรณีรถเพิ่งมาถึง IR
   if (currentCarState && !carAtIR) {
-
     carAtIR = true;
-
-
-    // เพิ่ม counter
     eepromData.irDetectionCount++;
-
     saveEEPROM();
-
-
     Serial.println("IR: CAR DETECTED");
-  }
-
-
-  // ---------------------------------------------------
-  // รถออกจาก IR
-  // ---------------------------------------------------
-
+  } 
+  // กรณีกำลังขับผ่านพ้น IR ไปแล้ว
   else if (!currentCarState && carAtIR) {
-
     carAtIR = false;
-
     clearStart = millis();
-
-
     Serial.println("IR: CAR CLEARED");
   }
 }
 
-
-// =====================================================
-// UPDATE GATE
-// =====================================================
-
+// ควบคุมตรรกะไม้กั้น
 void updateGate() {
-
-  // ---------------------------------------------------
-  // มีรถที่ IR
-  // ---------------------------------------------------
-
   if (carAtIR) {
-
-    // ถ้าไม้กั้นยังปิด
-    if (!gateOpen) {
-
-      openGate();
-    }
-
-
-    // reset timer
+    if (!gateOpen) openGate();
     clearStart = 0;
-  }
-
-
-  // ---------------------------------------------------
-  // ไม่มีรถที่ IR
-  // ---------------------------------------------------
-
-  else {
-
-    // ถ้าไม้กั้นเปิดอยู่
+  } else {
     if (gateOpen) {
-
-      // เริ่มจับเวลาหลังรถพ้น
-      if (clearStart == 0) {
-
-        clearStart = millis();
-      }
-
-
-      // รถพ้นเกินเวลาที่กำหนด
+      if (clearStart == 0) clearStart = millis();
+      // เมื่อรถพ้นเซนเซอร์ครบตามเวลาหน่วง ให้ปิดไม้กั้น
       if (millis() - clearStart >= CLOSE_DELAY) {
-
         closeGate();
       }
     }
   }
 }
 
-
-// =====================================================
-// OPEN GATE
-// =====================================================
-
+// คำสั่งเปิดไม้กั้น
 void openGate() {
-
-  if (gateOpen) {
-    return;
-  }
-
+  if (gateOpen) return;
 
   gateServo.write(90);
-
   gateOpen = true;
 
-
-  // EEPROM counter
   eepromData.gateOpenCount++;
-
   saveEEPROM();
 
-
   Serial.println("GATE: OPEN");
-
-
-  // ส่ง event ไป Raspberry Pi
   Serial.println("A2,EVENT,GATE_OPEN");
 }
 
-
-// =====================================================
-// CLOSE GATE
-// =====================================================
-
+// คำสั่งปิดไม้กั้น
 void closeGate() {
-
-  if (!gateOpen) {
-    return;
-  }
-
+  if (!gateOpen) return;
 
   gateServo.write(0);
-
   gateOpen = false;
-
   clearStart = 0;
 
-
-  // EEPROM counter
   eepromData.gateCloseCount++;
-
   saveEEPROM();
 
-
   Serial.println("GATE: CLOSE");
-
-
-  // ส่ง event ไป Raspberry Pi
   Serial.println("A2,EVENT,GATE_CLOSE");
 }
 
-
-// =====================================================
-// UPDATE LCD
-// =====================================================
-//
-// จุดสำคัญของการแก้ครั้งนี้
-//
-// ❌ ไม่มี lcd.clear()
-// ❌ ไม่เขียนซ้ำทุก 500 ms
-//
-// Arduino จะเรียกฟังก์ชันนี้
-// เฉพาะตอนที่จำนวนช่องว่างเปลี่ยน
-// =====================================================
-
+// อัปเดตการแสดงผลบนหน้าจอ LCD (อัปเดตเฉพาะเมื่อมีการเปลี่ยนแปลง)
 void updateLCD() {
-
   static int lastAvailableSlots = -1;
-
   static bool firstDisplay = true;
 
-
-  // ถ้าไม่ใช่ครั้งแรก
-  // และค่าจำนวนช่องว่างไม่เปลี่ยน
-  // ไม่ต้องทำอะไร
-
-  if (
-    !firstDisplay &&
-    lastAvailableSlots == availableSlots
-  ) {
-
-    return;
-  }
-
+  if (!firstDisplay && lastAvailableSlots == availableSlots) return;
 
   firstDisplay = false;
-
   lastAvailableSlots = availableSlots;
 
-
-  // ---------------------------------------------------
-  // บรรทัดที่ 1
-  // ---------------------------------------------------
-
   lcd.setCursor(0, 0);
-
   lcd.print("SMART PARKING   ");
-
-
-  // ---------------------------------------------------
-  // บรรทัดที่ 2
-  // ---------------------------------------------------
-
   lcd.setCursor(0, 1);
-
   lcd.print("Available: ");
-
   lcd.print(availableSlots);
-
   lcd.print("/4   ");
 }
 
-
-// =====================================================
-// SEND STATUS TO RASPBERRY PI
-// =====================================================
-//
-// Format:
-//
-// A2,STATUS,IR=0,GATE=CLOSED,A=3,IRC=5,OPEN=2,CLOSE=2
-//
-// IR
-// 0 = ไม่มีรถ
-// 1 = มีรถ
-//
-// GATE
-// OPEN / CLOSED
-//
-// A
-// จำนวนช่องว่าง
-//
-// IRC
-// จำนวนครั้งตรวจจับ IR
-//
-// OPEN
-// จำนวนครั้งเปิดไม้กั้น
-//
-// CLOSE
-// จำนวนครั้งปิดไม้กั้น
-// =====================================================
-
+// ส่งสถานะแบบโครงสร้างข้อมูลไป Raspberry Pi
 void sendPiStatus() {
-
   Serial.print("A2,STATUS");
-
-  Serial.print(",IR=");
-
-  Serial.print(carAtIR ? 1 : 0);
-
-  Serial.print(",GATE=");
-
-  if (gateOpen) {
-    Serial.print("OPEN");
-  }
-  else {
-    Serial.print("CLOSED");
-  }
-
-  Serial.print(",A=");
-
-  Serial.print(availableSlots);
-
-  Serial.print(",IRC=");
-
-  Serial.print(eepromData.irDetectionCount);
-
-  Serial.print(",OPEN=");
-
-  Serial.print(eepromData.gateOpenCount);
-
-  Serial.print(",CLOSE=");
-
-  Serial.println(eepromData.gateCloseCount);
+  Serial.print(",IR="); Serial.print(carAtIR ? 1 : 0);
+  Serial.print(",GATE="); Serial.print(gateOpen ? "OPEN" : "CLOSED");
+  Serial.print(",A="); Serial.print(availableSlots);
+  Serial.print(",IRC="); Serial.print(eepromData.irDetectionCount);
+  Serial.print(",OPEN="); Serial.print(eepromData.gateOpenCount);
+  Serial.print(",CLOSE="); Serial.println(eepromData.gateCloseCount);
 }
 
-
-// =====================================================
-// DEBUG
-// =====================================================
-
+// แสดงข้อมูลเพื่อการตรวจสอบ (Debug)
 void printDebug() {
-
-  Serial.print("IR=");
-
-  Serial.print(carAtIR ? "CAR" : "CLEAR");
-
-
-  Serial.print(" | GATE=");
-
-  Serial.print(gateOpen ? "OPEN" : "CLOSED");
-
-
-  Serial.print(" | AVAILABLE=");
-
-  Serial.print(availableSlots);
-
-
-  Serial.print(" | IRC=");
-
-  Serial.print(eepromData.irDetectionCount);
-
-
-  Serial.print(" | OPEN=");
-
-  Serial.print(eepromData.gateOpenCount);
-
-
-  Serial.print(" | CLOSE=");
-
-  Serial.print(eepromData.gateCloseCount);
-
-
-  Serial.print(" | BOOT=");
-
-  Serial.println(eepromData.bootCount);
+  Serial.print("IR="); Serial.print(carAtIR ? "CAR" : "CLEAR");
+  Serial.print(" | GATE="); Serial.print(gateOpen ? "OPEN" : "CLOSED");
+  Serial.print(" | AVAILABLE="); Serial.print(availableSlots);
+  Serial.print(" | IRC="); Serial.print(eepromData.irDetectionCount);
+  Serial.print(" | OPEN="); Serial.print(eepromData.gateOpenCount);
+  Serial.print(" | CLOSE="); Serial.print(eepromData.gateCloseCount);
+  Serial.print(" | BOOT="); Serial.println(eepromData.bootCount);
 }
